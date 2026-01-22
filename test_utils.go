@@ -33,7 +33,7 @@ func testOptionsWithNamespace(namespace string) Options {
 		ServerAddr: testServerAddr,
 		ProcessID:  "1",
 		Database:   testDatabase,
-		PoolSize:   1,
+		PipelineMultiplex:   1,
 		Namespace:  namespace,
 	}
 }
@@ -44,7 +44,7 @@ func SetupDefaultTestOptionsWithHeartbeat(namespace, processID string) Options {
 		ServerAddr: testServerAddr,
 		ProcessID:  processID,
 		Database:   testDatabase,
-		PoolSize:   1,
+		PipelineMultiplex:   1,
 		Namespace:  namespace,
 		Heartbeat: &HeartbeatOptions{
 			Interval:     2 * time.Second,

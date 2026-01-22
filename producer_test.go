@@ -2,13 +2,14 @@ package workers
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"testing"
 
 	"github.com/digitalocean/go-workers2/storage"
-	"github.com/go-redis/redis/v8"
+	"github.com/redis/rueidis/mock"
+	"github.com/redis/rueidis/rueidiscompat"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/mock/gomock"
 )
 
 func TestProducer_Enqueue(t *testing.T) {
@@ -173,43 +174,39 @@ func TestMultipleEnqueueOrder(t *testing.T) {
 }
 
 func TestNewProducerWithRedisClient(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
 	namespace := "prod"
 	opts := Options{
 		ProcessID: "1",
 		Namespace: namespace,
 	}
 
-	client := redis.NewClient(&redis.Options{
-		IdleTimeout: 1,
-		Password:    "ab",
-		DB:          2,
-		TLSConfig:   &tls.Config{ServerName: "test_tls3"},
-	})
+	client := mock.NewClient(ctrl)
+	redisClient := rueidiscompat.NewAdapter(client)
 
-	producer, err := NewProducerWithRedisClient(opts, client)
+	producer, err := NewProducerWithRedisClient(opts, redisClient)
 
 	assert.NoError(t, err)
 	assert.Equal(t, namespace+":", producer.opts.Namespace)
 
 	assert.NotNil(t, producer.GetRedisClient())
-	assert.NotNil(t, producer.GetRedisClient().Options().TLSConfig)
-	assert.Equal(t, "test_tls3", producer.GetRedisClient().Options().TLSConfig.ServerName)
 }
 
 func TestNewProducerWithRedisClientNoProcessID(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
 	namespace := "prod"
 	opts := Options{
 		Namespace: namespace,
 	}
 
-	client := redis.NewClient(&redis.Options{
-		IdleTimeout: 1,
-		Password:    "ab",
-		DB:          2,
-		TLSConfig:   &tls.Config{ServerName: "test_tls2"},
-	})
+	client := mock.NewClient(ctrl)
+	redisClient := rueidiscompat.NewAdapter(client)
 
-	mgr, err := NewProducerWithRedisClient(opts, client)
+	mgr, err := NewProducerWithRedisClient(opts, redisClient)
 
 	assert.Error(t, err)
 	assert.Nil(t, mgr)

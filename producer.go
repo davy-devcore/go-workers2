@@ -8,7 +8,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/go-redis/redis/v8"
+	"github.com/redis/rueidis/rueidiscompat"
 )
 
 const (
@@ -52,7 +52,7 @@ func NewProducer(options Options) (*Producer, error) {
 }
 
 // NewProducerWithRedisClient creates a new producer with the given options and Redis client
-func NewProducerWithRedisClient(options Options, client *redis.Client) (*Producer, error) {
+func NewProducerWithRedisClient(options Options, client rueidiscompat.Cmdable) (*Producer, error) {
 	options, err := processOptionsWithRedisClient(options, client)
 	if err != nil {
 		return nil, err
@@ -65,7 +65,7 @@ func NewProducerWithRedisClient(options Options, client *redis.Client) (*Produce
 
 // GetRedisClient returns the Redis client used by the producer
 // Deprecated: the Redis client is an internal implementation and access will be removed
-func (p *Producer) GetRedisClient() *redis.Client {
+func (p *Producer) GetRedisClient() rueidiscompat.Cmdable {
 	return p.opts.client
 }
 

@@ -8,13 +8,13 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/go-redis/redis/v8"
+	"github.com/redis/rueidis/rueidiscompat"
 )
 
 type redisStore struct {
 	namespace string
 
-	client *redis.Client
+	client rueidiscompat.Cmdable
 	logger *log.Logger
 }
 
@@ -22,7 +22,7 @@ type redisStore struct {
 var _ Store = &redisStore{}
 
 // NewRedisStore returns a new Redis store with the given namespace and preconfigured client
-func NewRedisStore(namespace string, client *redis.Client, logger *log.Logger) Store {
+func NewRedisStore(namespace string, client rueidiscompat.Cmdable, logger *log.Logger) Store {
 	return &redisStore{
 		namespace: namespace,
 		client:    client,
@@ -36,7 +36,7 @@ func (r *redisStore) DequeueMessage(ctx context.Context, queue string, inprogres
 	if err != nil {
 		// If redis returns null, the queue is empty.
 		// Just ignore empty queue errors; print all other errors.
-		if err != redis.Nil {
+		if err != rueidiscompat.Nil {
 			r.logger.Println("ERR: ", queue, err)
 		} else {
 			err = NoMessage
@@ -131,7 +131,7 @@ func (r *redisStore) GetAllHeartbeats(ctx context.Context) ([]*Heartbeat, error)
 
 func (r *redisStore) getHeartbeatIDs(ctx context.Context) ([]string, error) {
 	heartbeatIDs, err := r.client.SMembers(ctx, GetProcessesKey(r.namespace)).Result()
-	if err != nil && err != redis.Nil {
+	if err != nil && err != rueidiscompat.Nil {
 		return nil, err
 	}
 	return heartbeatIDs, nil
@@ -161,7 +161,7 @@ func (r *redisStore) SendHeartbeat(ctx context.Context, heartbeat *Heartbeat) er
 		"worker_heartbeats", workerHeartbeats)
 
 	_, err = pipe.Exec(ctx)
-	if err != nil && err != redis.Nil {
+	if err != nil && err != rueidiscompat.Nil {
 		return err
 	}
 
@@ -178,7 +178,7 @@ func (r *redisStore) RequeueMessagesFromInProgressQueue(ctx context.Context, inp
 		msg, err := r.client.BRPopLPush(ctx, r.getQueueName(inprogressQueue), r.getQueueName(queue), 1*time.Second).Result()
 
 		if err != nil {
-			if err == redis.Nil {
+			if err == rueidiscompat.Nil {
 				break
 			}
 			return requeuedMsgs, err
@@ -200,7 +200,7 @@ func (r *redisStore) RemoveHeartbeat(ctx context.Context, heartbeatID string) er
 	pipe.SRem(ctx, GetProcessesKey(r.namespace), heartbeatID)
 
 	_, err := pipe.Exec(ctx)
-	if err != nil && err != redis.Nil {
+	if err != nil && err != rueidiscompat.Nil {
 		return err
 	}
 
@@ -208,7 +208,7 @@ func (r *redisStore) RemoveHeartbeat(ctx context.Context, heartbeatID string) er
 }
 
 func (r *redisStore) EnqueueMessage(ctx context.Context, queue string, priority float64, message string) error {
-	_, err := r.client.ZAdd(ctx, r.getQueueName(queue), &redis.Z{
+	_, err := r.client.ZAdd(ctx, r.getQueueName(queue), rueidiscompat.Z{
 		Score:  priority,
 		Member: message,
 	}).Result()
@@ -217,7 +217,7 @@ func (r *redisStore) EnqueueMessage(ctx context.Context, queue string, priority 
 }
 
 func (r *redisStore) EnqueueScheduledMessage(ctx context.Context, priority float64, message string) error {
-	_, err := r.client.ZAdd(ctx, r.namespace+ScheduledJobsKey, &redis.Z{
+	_, err := r.client.ZAdd(ctx, r.namespace+ScheduledJobsKey, rueidiscompat.Z{
 		Score:  priority,
 		Member: message,
 	}).Result()
@@ -228,7 +228,7 @@ func (r *redisStore) EnqueueScheduledMessage(ctx context.Context, priority float
 func (r *redisStore) DequeueScheduledMessage(ctx context.Context, priority float64) (string, error) {
 	key := r.namespace + ScheduledJobsKey
 
-	messages, err := r.client.ZRangeByScore(ctx, key, &redis.ZRangeBy{
+	messages, err := r.client.ZRangeByScore(ctx, key, rueidiscompat.ZRangeBy{
 		Min:    "-inf",
 		Max:    strconv.FormatFloat(priority, 'f', -1, 64),
 		Offset: 0,
@@ -256,7 +256,7 @@ func (r *redisStore) DequeueScheduledMessage(ctx context.Context, priority float
 }
 
 func (r *redisStore) EnqueueRetriedMessage(ctx context.Context, priority float64, message string) error {
-	_, err := r.client.ZAdd(ctx, r.namespace+RetryKey, &redis.Z{
+	_, err := r.client.ZAdd(ctx, r.namespace+RetryKey, rueidiscompat.Z{
 		Score:  priority,
 		Member: message,
 	}).Result()
@@ -267,7 +267,7 @@ func (r *redisStore) EnqueueRetriedMessage(ctx context.Context, priority float64
 func (r *redisStore) DequeueRetriedMessage(ctx context.Context, priority float64) (string, error) {
 	key := r.namespace + RetryKey
 
-	messages, err := r.client.ZRangeByScore(ctx, key, &redis.ZRangeBy{
+	messages, err := r.client.ZRangeByScore(ctx, key, rueidiscompat.ZRangeBy{
 		Min:    "-inf",
 		Max:    strconv.FormatFloat(priority, 'f', -1, 64),
 		Offset: 0,
@@ -307,7 +307,7 @@ func (r *redisStore) GetAllRetries(ctx context.Context) (*Retries, error) {
 	retryJobsGet := pipe.ZRange(ctx, r.namespace+RetryKey, 0, -1)
 
 	_, err := pipe.Exec(ctx)
-	if err != nil && err != redis.Nil {
+	if err != nil && err != rueidiscompat.Nil {
 		return nil, err
 	}
 
@@ -323,14 +323,14 @@ func (r *redisStore) GetAllStats(ctx context.Context, queues []string) (*Stats, 
 	pGet := pipe.Get(ctx, r.namespace+"stat:processed")
 	fGet := pipe.Get(ctx, r.namespace+"stat:failed")
 	rGet := pipe.ZCard(ctx, r.namespace+RetryKey)
-	qLen := map[string]*redis.IntCmd{}
+	qLen := map[string]*rueidiscompat.IntCmd{}
 
 	for _, queue := range queues {
 		qLen[r.namespace+queue] = pipe.LLen(ctx, fmt.Sprintf("%squeue:%s", r.namespace, queue))
 	}
 
 	_, err := pipe.Exec(ctx)
-	if err != nil && err != redis.Nil {
+	if err != nil && err != rueidiscompat.Nil {
 		return nil, err
 	}
 

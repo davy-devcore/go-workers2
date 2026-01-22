@@ -40,7 +40,7 @@ type Retries struct {
 func parseURLQuery(req *http.Request) (uint64, int64, string, error) {
 	query := req.URL.Query().Get("q")
 	if len(query) > 0 {
-		query = fmt.Sprintf("*" + query + "*")
+		query = fmt.Sprintf("*%s*", query)
 	} else {
 		return 0, 10, query, nil
 	}

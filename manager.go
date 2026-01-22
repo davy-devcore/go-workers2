@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/digitalocean/go-workers2/storage"
-	"github.com/go-redis/redis/v8"
 	"github.com/google/uuid"
+	"github.com/redis/rueidis/rueidiscompat"
 )
 
 // Manager coordinates work, workers, and signaling needed for job processing
@@ -61,12 +61,12 @@ func NewManager(options Options) (*Manager, error) {
 }
 
 // GetRedisClient returns the Redis client used by the manager
-func (m *Manager) GetRedisClient() *redis.Client {
+func (m *Manager) GetRedisClient() rueidiscompat.Cmdable {
 	return m.opts.client
 }
 
 // NewManagerWithRedisClient creates a new manager with provide options and pre-configured Redis client
-func NewManagerWithRedisClient(options Options, client *redis.Client) (*Manager, error) {
+func NewManagerWithRedisClient(options Options, client rueidiscompat.Cmdable) (*Manager, error) {
 	options, err := processOptionsWithRedisClient(options, client)
 	if err != nil {
 		return nil, err
@@ -347,7 +347,7 @@ func (m *Manager) startHeartbeat() error {
 
 func (m *Manager) handleAllExpiredHeartbeats(ctx context.Context, expireTS int64) ([]*staleMessageUpdate, error) {
 	heartbeats, err := m.opts.store.GetAllHeartbeats(ctx)
-	if err != nil && err != redis.Nil {
+	if err != nil && err != rueidiscompat.Nil {
 		return nil, err
 	}
 

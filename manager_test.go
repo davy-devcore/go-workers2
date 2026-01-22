@@ -2,15 +2,16 @@ package workers
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/digitalocean/go-workers2/storage"
-	"github.com/go-redis/redis/v8"
+	"github.com/redis/rueidis/mock"
+	"github.com/redis/rueidis/rueidiscompat"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/mock/gomock"
 )
 
 func newTestManager(opts Options, flushDB bool) (*Manager, error) {
@@ -31,44 +32,40 @@ func TestNewManager(t *testing.T) {
 }
 
 func TestNewManagerWithRedisClient(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
 	namespace := "prod"
 	opts := Options{
 		ProcessID: "1",
 		Namespace: namespace,
 	}
 
-	client := redis.NewClient(&redis.Options{
-		IdleTimeout: 1,
-		Password:    "ab",
-		DB:          2,
-		TLSConfig:   &tls.Config{ServerName: "test_tls2"},
-	})
+	client := mock.NewClient(ctrl)
+	redisClient := rueidiscompat.NewAdapter(client)
 
-	mgr, err := NewManagerWithRedisClient(opts, client)
+	mgr, err := NewManagerWithRedisClient(opts, redisClient)
 
 	assert.NoError(t, err)
 	assert.NotEmpty(t, mgr.uuid)
 	assert.Equal(t, namespace+":", mgr.opts.Namespace)
 
 	assert.NotNil(t, mgr.GetRedisClient())
-	assert.NotNil(t, mgr.GetRedisClient().Options().TLSConfig)
-	assert.Equal(t, "test_tls2", mgr.GetRedisClient().Options().TLSConfig.ServerName)
 }
 
 func TestNewManagerWithRedisClientNoProcessID(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
 	namespace := "prod"
 	opts := Options{
 		Namespace: namespace,
 	}
 
-	client := redis.NewClient(&redis.Options{
-		IdleTimeout: 1,
-		Password:    "ab",
-		DB:          2,
-		TLSConfig:   &tls.Config{ServerName: "test_tls2"},
-	})
+	client := mock.NewClient(ctrl)
+	redisClient := rueidiscompat.NewAdapter(client)
 
-	mgr, err := NewManagerWithRedisClient(opts, client)
+	mgr, err := NewManagerWithRedisClient(opts, redisClient)
 
 	assert.Error(t, err)
 	assert.Nil(t, mgr)

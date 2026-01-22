@@ -9,7 +9,8 @@ import (
 	"time"
 
 	"github.com/digitalocean/go-workers2/storage"
-	"github.com/go-redis/redis/v8"
+	"github.com/redis/rueidis"
+	"github.com/redis/rueidis/rueidiscompat"
 )
 
 const (
@@ -25,7 +26,8 @@ type Options struct {
 	PollInterval time.Duration
 	Database     int
 	Password     string
-	PoolSize     int
+	PipelineMultiplex     int
+	IdleTimeout time.Duration
 
 	// Provide one of ServerAddr or (SentinelAddrs + RedisMasterName)
 	ServerAddr      string
@@ -43,11 +45,11 @@ type Options struct {
 	// Log
 	Logger *log.Logger
 
-	client *redis.Client
+	client rueidiscompat.Cmdable
 	store  storage.Store
 }
 
-func (o *Options) Client() *redis.Client {
+func (o *Options) Client() rueidiscompat.Cmdable {
 	return o.client
 }
 
@@ -73,34 +75,52 @@ func processOptions(options Options) (Options, error) {
 	}
 
 	//redis options
-	if options.PoolSize == 0 {
-		options.PoolSize = 1
+	if options.PipelineMultiplex == 0 {
+		options.PipelineMultiplex = 1
 	}
-	redisIdleTimeout := 240 * time.Second
+	if options.PipelineMultiplex >= rueidis.MaxPipelineMultiplex {
+		options.PipelineMultiplex = rueidis.MaxPipelineMultiplex
+	}
 
 	if options.ServerAddr != "" {
-		options.client = redis.NewClient(&redis.Options{
-			IdleTimeout: redisIdleTimeout,
-			Password:    options.Password,
-			DB:          options.Database,
-			PoolSize:    options.PoolSize,
-			Addr:        options.ServerAddr,
-			TLSConfig:   options.RedisTLSConfig,
+		client, err := rueidis.NewClient(rueidis.ClientOption{
+			Password: options.Password,
+			SelectDB: options.Database,
+			
+			InitAddress: []string{options.ServerAddr},
+			TLSConfig: options.RedisTLSConfig,
+
+			BlockingPoolCleanup: options.IdleTimeout,
+			PipelineMultiplex: options.PipelineMultiplex,
 		})
+		if err != nil {
+			return Options{}, err
+		}
+
+		options.client = rueidiscompat.NewAdapter(client)
 	} else if options.SentinelAddrs != "" {
 		if options.RedisMasterName == "" {
 			return Options{}, errors.New("Sentinel configuration requires a master name")
 		}
 
-		options.client = redis.NewFailoverClient(&redis.FailoverOptions{
-			IdleTimeout:   redisIdleTimeout,
-			Password:      options.Password,
-			DB:            options.Database,
-			PoolSize:      options.PoolSize,
-			SentinelAddrs: strings.Split(options.SentinelAddrs, ","),
-			MasterName:    options.RedisMasterName,
-			TLSConfig:     options.RedisTLSConfig,
+		client, err := rueidis.NewClient(rueidis.ClientOption{
+			SelectDB: options.Database,
+			
+			InitAddress: strings.Split(options.SentinelAddrs, ","),
+			Sentinel: rueidis.SentinelOption{
+				MasterSet: options.RedisMasterName,
+				Password: options.Password,
+				TLSConfig: options.RedisTLSConfig,
+			},
+
+			BlockingPoolCleanup: options.IdleTimeout,
+			PipelineMultiplex: options.PipelineMultiplex,
 		})
+		if err != nil {
+			return Options{}, err
+		}
+
+		options.client = rueidiscompat.NewAdapter(client)
 	} else {
 		return Options{}, errors.New("Options requires either the Server or Sentinels option")
 	}
@@ -124,7 +144,7 @@ func processOptions(options Options) (Options, error) {
 	return options, nil
 }
 
-func processOptionsWithRedisClient(options Options, client *redis.Client) (Options, error) {
+func processOptionsWithRedisClient(options Options, client rueidiscompat.Cmdable) (Options, error) {
 	options, err := validateGeneralOptions(options)
 	if err != nil {
 		return Options{}, err
