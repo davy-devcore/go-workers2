@@ -564,3 +564,35 @@ func TestManager_Run_PrioritizedActiveManager(t *testing.T) {
 		assert.True(t, managerConfigs[i].manager.IsActive())
 	}
 }
+
+// A signal handler and an external caller may both call Stop while the
+// manager drains; the second call must not panic or block.
+func TestManager_StopIdempotentDuringDrain(t *testing.T) {
+	opts := testOptionsWithNamespace("prod")
+	opts.PollInterval = time.Second
+	mgr, err := newTestManager(opts, true)
+	assert.NoError(t, err)
+	mgr.AddWorker("myqueue", 1, func(m *Msg) error { return nil })
+
+	done := make(chan struct{})
+	go func() {
+		mgr.Run()
+		close(done)
+	}()
+	time.Sleep(time.Second)
+
+	stopped := make(chan struct{})
+	go func() {
+		mgr.Stop()
+		mgr.Stop()
+		close(stopped)
+	}()
+
+	select {
+	case <-stopped:
+	case <-time.After(5 * time.Second):
+		t.Fatal("second Stop blocked")
+	}
+	<-done
+	mgr.Stop()
+}

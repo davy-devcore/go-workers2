@@ -22,6 +22,7 @@ type Manager struct {
 	lock             sync.Mutex
 	signal           chan os.Signal
 	running          bool
+	stopping         bool
 	stop             chan bool
 	active           bool
 	logger           *log.Logger
@@ -157,6 +158,7 @@ func (m *Manager) Run() {
 		return // Can't start if we're already running!
 	}
 	m.running = true
+	m.stopping = false
 
 	for _, h := range m.beforeStartHooks {
 		h()
@@ -204,12 +206,14 @@ func (m *Manager) Run() {
 }
 
 // Stop all workers under this Manager and returns immediately.
+// Safe to call again while draining: the signal handler and the caller may both stop.
 func (m *Manager) Stop() {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	if !m.running {
+	if !m.running || m.stopping {
 		return
 	}
+	m.stopping = true
 	if m.opts.Heartbeat != nil {
 		m.stopHeartbeat()
 	}
